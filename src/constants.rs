@@ -25,3 +25,5 @@ pub const JAVA_24_VERSION: u16 = 68;
 pub const JAVA_25_VERSION: u16 = 69;
 pub const LATEST_MAJOR_VERSION: u16 = JAVA_25_VERSION;
 pub const PREVIEW_MINOR_VERSION: u16 = 65535;
+
+pub(crate) const MAX_ANNOTATION_NESTING: u16 = 1000;

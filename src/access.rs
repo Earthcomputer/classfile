@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
     pub struct ClassAccess: u16 {
         const Public = 0x0001;
         const Final = 0x0010;
@@ -12,5 +12,90 @@ bitflags! {
         const Annotation = 0x2000;
         const Enum = 0x4000;
         const Module = 0x8000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct FieldAccess: u16 {
+        const Public = 0x0001;
+        const Private = 0x0002;
+        const Protected = 0x0004;
+        const Static = 0x0008;
+        const Final = 0x0010;
+        const Volatile = 0x0040;
+        const Transient = 0x0080;
+        const Synthetic = 0x1000;
+        const Enum = 0x4000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct MethodAccess: u16 {
+        const Public = 0x0001;
+        const Private = 0x0002;
+        const Protected = 0x0004;
+        const Static = 0x0008;
+        const Final = 0x0010;
+        const Synchronized = 0x0020;
+        const Bridge = 0x0040;
+        const Varargs = 0x0080;
+        const Native = 0x0100;
+        const Abstract = 0x0400;
+        const Strict = 0x0800;
+        const Synthetic = 0x1000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct ParameterAccess: u16 {
+        const Final = 0x0010;
+        const Synthetic = 0x1000;
+        const Mandated = 0x8000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct InnerClassAccess : u16 {
+        const Public = 0x0001;
+        const Private = 0x0002;
+        const Protected = 0x0004;
+        const Static = 0x0008;
+        const Final = 0x0010;
+        const Interface = 0x0020;
+        const Abstract = 0x0040;
+        const Synthetic = 0x1000;
+        const Annotation = 0x2000;
+        const Enum = 0x4000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct ModuleAccess: u16 {
+        const Open = 0x0020;
+        const Synthetic = 0x1000;
+        const Mandated = 0x8000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct ModuleRequireAccess: u16 {
+        const Transitive = 0x0020;
+        const StaticPhase = 0x0040;
+        const Synthetic = 0x1000;
+        const Mandated = 0x8000;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct ModuleRelationAccess: u16 {
+        const Synthetic = 0x1000;
+        const Mandated = 0x8000;
     }
 }

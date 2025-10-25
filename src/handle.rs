@@ -32,3 +32,23 @@ pub struct Handle<'class> {
     pub desc: Cow<'class, JavaStr>,
     pub is_interface: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ConstantDynamic<'class> {
+    pub name: Cow<'class, JavaStr>,
+    pub desc: Cow<'class, JavaStr>,
+    pub bootstrap_method: Handle<'class>,
+    pub bootstrap_method_arguments: Vec<BootstrapMethodArgument<'class>>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum BootstrapMethodArgument<'class> {
+    Integer(i32),
+    Float(f32),
+    Long(i64),
+    Double(f64),
+    String(Cow<'class, JavaStr>),
+    Class(Cow<'class, JavaStr>),
+    Handle(Handle<'class>),
+    ConstantDynamic(ConstantDynamic<'class>),
+}

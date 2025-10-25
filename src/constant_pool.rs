@@ -74,6 +74,7 @@ pub struct DynamicEntry<'class> {
     pub desc: Cow<'class, JavaStr>,
 }
 
+#[derive(Clone)]
 pub struct ConstantPool<'class> {
     buffer: ClassBuffer<'class>,
     offset: Box<[usize]>,
@@ -146,6 +147,21 @@ impl<'class> ConstantPool<'class> {
         }
 
         self.get(index).map(Some)
+    }
+
+    pub fn get_utf8_as_bytes(&self, index: u16) -> ClassFileResult<&[u8]> {
+        let offset = self.index_to_offset(index)?;
+        let tag = ConstantPoolTag::from_u8(self.buffer.read_u8(offset)?)?;
+
+        if tag != ConstantPoolTag::Utf8 {
+            return Err(ClassFileError::BadConstantPoolType {
+                expected: ConstantPoolTag::Utf8,
+                actual: tag,
+            });
+        }
+
+        let len = self.buffer.read_u16(offset + 1)?;
+        self.buffer.read_bytes(offset + 3, len as usize)
     }
 }
 
