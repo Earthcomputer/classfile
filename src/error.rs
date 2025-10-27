@@ -18,6 +18,8 @@ pub enum ClassFileError {
         expected: ConstantPoolTag,
         actual: ConstantPoolTag,
     },
+    #[error("bad constant pool tag: {0}, expected field constant value")]
+    BadConstantPoolTypeExpectedFieldConstantValue(ConstantPoolTag),
     #[error("bad handle kind: {0}")]
     BadHandleKind(u8),
     #[error("bad magic number")]

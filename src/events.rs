@@ -1,9 +1,9 @@
 use crate::tree::{AnnotationNode, AnnotationValue, TypeAnnotationNode};
 use crate::{
-    Attribute, BootstrapMethodArgument, ClassFileResult, FieldAccess, FieldValue, FrameType,
-    FrameValue, Handle, InnerClassAccess, Label, LabelCreator, LdcConstant, MethodAccess,
-    ModuleAccess, ModuleRelationAccess, ModuleRequireAccess, NewarrayType, Opcode, ParameterAccess,
-    TypePath, TypeReference,
+    Attribute, BootstrapMethodArgument, ClassAccess, ClassFileResult, FieldAccess, FieldValue,
+    FrameType, FrameValue, Handle, InnerClassAccess, Label, LabelCreator, LdcConstant,
+    MethodAccess, ModuleAccess, ModuleRelationAccess, ModuleRequireAccess, NewarrayType, Opcode,
+    ParameterAccess, TypePath, TypeReference,
 };
 use java_string::JavaStr;
 use std::borrow::Cow;
@@ -14,6 +14,8 @@ where
     P: ClassEventProviders<'class>,
 {
     Class(ClassClassEvent<'class>),
+    Synthetic,
+    Deprecated,
     Source(ClassSourceEvent<'class>),
     Module(ClassModuleEvent<'class, P::ModuleEvents>),
     NestHost(Cow<'class, JavaStr>),
@@ -33,6 +35,7 @@ where
 pub struct ClassClassEvent<'class> {
     pub major_version: u16,
     pub minor_version: u16,
+    pub access: ClassAccess,
     pub name: Cow<'class, JavaStr>,
     pub signature: Option<Cow<'class, JavaStr>>,
     pub super_name: Option<Cow<'class, JavaStr>>,
@@ -158,6 +161,7 @@ pub enum FieldEvent<'class, P>
 where
     P: FieldEventProviders<'class>,
 {
+    Deprecated,
     Annotations(P::Annotations),
     TypeAnnotations(P::TypeAnnotations),
     Attributes(P::Attributes),
@@ -178,6 +182,7 @@ pub enum MethodEvent<'class, P>
 where
     P: MethodEventProviders<'class>,
 {
+    Deprecated,
     Parameters(P::Parameters),
     AnnotationDefault(AnnotationValue<'class>),
     Annotations(P::Annotations),

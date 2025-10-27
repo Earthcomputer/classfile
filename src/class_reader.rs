@@ -1,16 +1,15 @@
-use crate::constants::MAX_ANNOTATION_NESTING;
 use crate::tree::{AnnotationNode, AnnotationValue, TypeAnnotationNode};
-use crate::type_annotation::TypeReferenceTargetType;
 use crate::{
     AnnotationEvent, Attribute, AttributeReader, ClassAccess, ClassClassEvent, ClassEvent,
     ClassEventProviders, ClassEventSource, ClassFieldEvent, ClassFileError, ClassFileResult,
     ClassInnerClassEvent, ClassMethodEvent, ClassModuleEvent, ClassOuterClassEvent,
-    ClassRecordComponentEvent, ClassSourceEvent, ConstantPool, DefaultLabelCreator, FieldEvent,
-    FieldEventProviders, InnerClassAccess, MethodEvent, MethodEventProviders,
-    MethodParameterAnnotationEvent, MethodParameterEvent, ModuleAccess, ModuleEvent,
-    ModuleEventProviders, ModuleProvidesEvent, ModuleRelationAccess, ModuleRelationEvent,
-    ModuleRequireAccess, ModuleRequireEvent, RecordComponentEvent, RecordComponentEventProviders,
-    TypePath, TypeReference, LATEST_MAJOR_VERSION,
+    ClassRecordComponentEvent, ClassSourceEvent, ConstantPool, ConstantPoolEntry,
+    DefaultLabelCreator, FieldAccess, FieldEvent, FieldEventProviders, FieldValue,
+    InnerClassAccess, MethodEvent, MethodEventProviders, MethodParameterAnnotationEvent,
+    MethodParameterEvent, ModuleAccess, ModuleEvent, ModuleEventProviders, ModuleProvidesEvent,
+    ModuleRelationAccess, ModuleRelationEvent, ModuleRequireAccess, ModuleRequireEvent,
+    RecordComponentEvent, RecordComponentEventProviders, TypePath, TypeReference,
+    TypeReferenceTargetType, UnknownAttribute, LATEST_MAJOR_VERSION, MAX_ANNOTATION_NESTING,
 };
 use bitflags::bitflags;
 use java_string::{JavaStr, JavaString};
@@ -129,6 +128,10 @@ impl<'class> ClassReader<'class> {
             .expect("couldn't read value before constant pool")
     }
 
+    /// Returns the access flags of the class. For classes before Java 1.5, this value won't reflect
+    /// the [`ClassAccess::Synthetic`] flag. If you need to support parsing these old classes and
+    /// need to check for synthetic classes, use [`ClassReaderEvents::is_synthetic`] or check for
+    /// [`ClassEvent::Synthetic`].
     pub fn access(&self) -> ClassFileResult<ClassAccess> {
         Ok(ClassAccess::from_bits_retain(
             self.buffer.read_u16(self.metadata_start)?,
@@ -199,6 +202,14 @@ impl<'class> ClassBuffer<'class> {
         Ok(array)
     }
 
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn read_u8(&self, index: usize) -> ClassFileResult<u8> {
         self.read_array::<1>(index).map(|arr| arr[0])
     }
@@ -263,32 +274,36 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
     type Iterator = ClassReaderEvents<'reader, 'class>;
 
     fn events(self) -> ClassFileResult<Self::Iterator> {
+        let access = self.access()?;
         let interfaces: ClassFileResult<Vec<_>> = self.interfaces()?.collect();
         let interfaces = interfaces?;
         let mut signature_offset = 0;
-        let mut source_offset = 0;
-        let mut source_debug_offset = 0;
-        let mut module_offset = 0;
-        let mut module_packages_offset = 0;
-        let mut module_main_offset = 0;
-        let mut nest_host_offset = 0;
+        let mut bootstrap_methods_offset = 0;
         let mut enclosing_method_offset = 0;
-        let mut visible_annotations_count = 0;
-        let mut visible_annotations_offset = 0;
+        let mut has_synthetic_attribute = false;
+        let mut inner_classes_count = 0;
+        let mut inner_classes_offset = 0;
         let mut invisible_annotations_count = 0;
         let mut invisible_annotations_offset = 0;
-        let mut visible_type_annotations_count = 0;
-        let mut visible_type_annotations_offset = 0;
         let mut invisible_type_annotations_count = 0;
         let mut invisible_type_annotations_offset = 0;
+        let mut is_deprecated = false;
+        let mut module_main_offset = 0;
+        let mut module_offset = 0;
+        let mut module_packages_offset = 0;
+        let mut nest_host_offset = 0;
         let mut nest_members_count = 0;
         let mut nest_members_offset = 0;
         let mut permitted_subclasses_count = 0;
         let mut permitted_subclasses_offset = 0;
-        let mut inner_classes_count = 0;
-        let mut inner_classes_offset = 0;
         let mut record_components_count = 0;
         let mut record_components_offset = 0;
+        let mut source_debug_offset = 0;
+        let mut source_offset = 0;
+        let mut visible_annotations_count = 0;
+        let mut visible_annotations_offset = 0;
+        let mut visible_type_annotations_count = 0;
+        let mut visible_type_annotations_offset = 0;
         let mut custom_attributes_offsets = Vec::new();
 
         let mut pos = self.metadata_start + 8 + interfaces.len() * 2;
@@ -335,30 +350,17 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
             pos += 4;
 
             match attribute_name {
-                b"Signature" => signature_offset = pos,
-                b"SourceFile" => source_offset = pos,
-                b"SourceDebugExtension" => source_debug_offset = pos - 4,
-                b"Module" => module_offset = pos,
-                b"ModulePackages" => module_packages_offset = pos,
-                b"ModuleMainClass" => module_main_offset = pos,
-                b"NestHost" => nest_host_offset = pos,
+                b"BootstrapMethods" => bootstrap_methods_offset = pos,
+                b"Deprecated" => is_deprecated = true,
                 b"EnclosingMethod" => enclosing_method_offset = pos,
-                b"RuntimeVisibleAnnotations" => {
-                    visible_annotations_count = self.buffer.read_u16(pos)?;
-                    visible_annotations_offset = pos + 2;
+                b"InnerClasses" => {
+                    inner_classes_count = self.buffer.read_u16(pos)?;
+                    inner_classes_offset = pos + 2;
                 }
-                b"RuntimeInvisibleAnnotations" => {
-                    invisible_annotations_count = self.buffer.read_u16(pos)?;
-                    invisible_annotations_offset = pos + 2;
-                }
-                b"RuntimeVisibleTypeAnnotations" => {
-                    visible_type_annotations_count = self.buffer.read_u16(pos)?;
-                    visible_type_annotations_offset = pos + 2;
-                }
-                b"RuntimeInvisibleTypeAnnotations" => {
-                    invisible_type_annotations_count = self.buffer.read_u16(pos)?;
-                    invisible_type_annotations_offset = pos + 2;
-                }
+                b"Module" => module_offset = pos,
+                b"ModuleMainClass" => module_main_offset = pos,
+                b"ModulePackages" => module_packages_offset = pos,
+                b"NestHost" => nest_host_offset = pos,
                 b"NestMembers" => {
                     nest_members_count = self.buffer.read_u16(pos)?;
                     nest_members_offset = pos + 2;
@@ -367,14 +369,30 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
                     permitted_subclasses_count = self.buffer.read_u16(pos)?;
                     permitted_subclasses_offset = pos + 2;
                 }
-                b"InnerClasses" => {
-                    inner_classes_count = self.buffer.read_u16(pos)?;
-                    inner_classes_offset = pos + 2;
-                }
+                b"Signature" => signature_offset = pos,
+                b"SourceDebugExtension" => source_debug_offset = pos - 4,
+                b"SourceFile" => source_offset = pos,
                 b"Record" => {
                     record_components_count = self.buffer.read_u16(pos)?;
                     record_components_offset = pos + 2;
                 }
+                b"RuntimeInvisibleAnnotations" => {
+                    invisible_annotations_count = self.buffer.read_u16(pos)?;
+                    invisible_annotations_offset = pos + 2;
+                }
+                b"RuntimeInvisibleTypeAnnotations" => {
+                    invisible_type_annotations_count = self.buffer.read_u16(pos)?;
+                    invisible_type_annotations_offset = pos + 2;
+                }
+                b"RuntimeVisibleAnnotations" => {
+                    visible_annotations_count = self.buffer.read_u16(pos)?;
+                    visible_annotations_offset = pos + 2;
+                }
+                b"RuntimeVisibleTypeAnnotations" => {
+                    visible_type_annotations_count = self.buffer.read_u16(pos)?;
+                    visible_type_annotations_offset = pos + 2;
+                }
+                b"Synthetic" => has_synthetic_attribute = true,
                 _ => custom_attributes_offsets.push(pos - 6),
             }
 
@@ -383,36 +401,40 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
 
         Ok(ClassReaderEvents {
             reader: self,
-            signature_offset,
+            access,
             interfaces,
-            fields_offset,
             fields_count,
-            methods_offset,
+            fields_offset,
             methods_count,
-            source_offset,
-            source_debug_offset,
-            module_offset,
-            module_packages_offset,
-            module_main_offset,
-            nest_host_offset,
+            methods_offset,
+            bootstrap_methods_offset,
             enclosing_method_offset,
-            visible_annotations_count,
-            visible_annotations_offset,
+            has_synthetic_attribute,
+            inner_classes_count,
+            inner_classes_offset,
             invisible_annotations_count,
             invisible_annotations_offset,
-            visible_type_annotations_count,
-            visible_type_annotations_offset,
             invisible_type_annotations_count,
             invisible_type_annotations_offset,
-            custom_attributes_offsets,
+            is_deprecated,
+            module_main_offset,
+            module_offset,
+            module_packages_offset,
+            nest_host_offset,
             nest_members_count,
             nest_members_offset,
             permitted_subclasses_count,
             permitted_subclasses_offset,
-            inner_classes_count,
-            inner_classes_offset,
             record_components_count,
             record_components_offset,
+            signature_offset,
+            source_debug_offset,
+            source_offset,
+            visible_annotations_count,
+            visible_annotations_offset,
+            visible_type_annotations_count,
+            visible_type_annotations_offset,
+            custom_attributes_offsets,
             state: 0,
         })
     }
@@ -420,36 +442,40 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
 
 pub struct ClassReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
-    signature_offset: usize,
+    access: ClassAccess,
     interfaces: Vec<Cow<'class, JavaStr>>,
-    fields_offset: usize,
     fields_count: u16,
-    methods_offset: usize,
+    fields_offset: usize,
     methods_count: u16,
-    source_offset: usize,
-    source_debug_offset: usize,
-    module_offset: usize,
-    module_packages_offset: usize,
-    module_main_offset: usize,
-    nest_host_offset: usize,
+    methods_offset: usize,
+    bootstrap_methods_offset: usize,
     enclosing_method_offset: usize,
-    visible_annotations_count: u16,
-    visible_annotations_offset: usize,
+    has_synthetic_attribute: bool,
+    inner_classes_count: u16,
+    inner_classes_offset: usize,
     invisible_annotations_count: u16,
     invisible_annotations_offset: usize,
-    visible_type_annotations_count: u16,
-    visible_type_annotations_offset: usize,
     invisible_type_annotations_count: u16,
     invisible_type_annotations_offset: usize,
-    custom_attributes_offsets: Vec<usize>,
+    is_deprecated: bool,
+    module_main_offset: usize,
+    module_offset: usize,
+    module_packages_offset: usize,
+    nest_host_offset: usize,
     nest_members_count: u16,
     nest_members_offset: usize,
     permitted_subclasses_count: u16,
     permitted_subclasses_offset: usize,
-    inner_classes_count: u16,
-    inner_classes_offset: usize,
     record_components_count: u16,
     record_components_offset: usize,
+    signature_offset: usize,
+    source_debug_offset: usize,
+    source_offset: usize,
+    visible_annotations_count: u16,
+    visible_annotations_offset: usize,
+    visible_type_annotations_count: u16,
+    visible_type_annotations_offset: usize,
+    custom_attributes_offsets: Vec<usize>,
     state: u8,
 }
 
@@ -458,6 +484,7 @@ impl<'reader, 'class> ClassReaderEvents<'reader, 'class> {
         Ok(ClassClassEvent {
             major_version: self.reader.major_version(),
             minor_version: self.reader.minor_version(),
+            access: self.access,
             name: self.reader.name()?,
             super_name: self.reader.super_name()?,
             signature: self.signature()?,
@@ -473,6 +500,14 @@ impl<'reader, 'class> ClassReaderEvents<'reader, 'class> {
         Ok(Some(self.reader.constant_pool.get_utf8(
             self.reader.buffer.read_u16(self.signature_offset)?,
         )?))
+    }
+
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+
+    pub fn is_synthetic(&self) -> bool {
+        self.access.contains(ClassAccess::Synthetic) || self.has_synthetic_attribute
     }
 
     pub fn source(&self) -> ClassFileResult<Option<ClassSourceEvent<'class>>> {
@@ -659,72 +694,82 @@ impl<'reader, 'class> Iterator for ClassReaderEvents<'reader, 'class> {
                     return Some(self.class_internal().map(ClassEvent::Class));
                 }
                 1 => {
+                    if self.is_synthetic() {
+                        return Some(Ok(ClassEvent::Synthetic));
+                    }
+                }
+                2 => {
+                    if self.is_deprecated {
+                        return Some(Ok(ClassEvent::Deprecated));
+                    }
+                }
+                3 => {
                     if let Some(source) = self.source().transpose() {
                         return Some(source.map(ClassEvent::Source));
                     }
                 }
-                2 => {
+                4 => {
                     if let Some(module) = self.module().transpose() {
                         return Some(module.map(ClassEvent::Module));
                     }
                 }
-                3 => {
+                5 => {
                     if let Some(nest_host) = self.nest_host().transpose() {
                         return Some(nest_host.map(ClassEvent::NestHost));
                     }
                 }
-                4 => {
+                6 => {
                     if let Some(outer_class) = self.outer_class().transpose() {
                         return Some(outer_class.map(ClassEvent::OuterClass));
                     }
                 }
-                5 => {
+                7 => {
                     if self.visible_annotations_offset != 0
                         || self.invisible_annotations_offset != 0
                     {
                         return Some(Ok(ClassEvent::Annotations(self.annotations())));
                     }
                 }
-                6 => {
+                8 => {
                     if self.visible_type_annotations_offset != 0
                         || self.invisible_type_annotations_offset != 0
                     {
                         return Some(Ok(ClassEvent::TypeAnnotations(self.type_annotations())));
                     }
                 }
-                7 => {
+                9 => {
                     if !self.custom_attributes_offsets.is_empty() {
                         return Some(Ok(ClassEvent::Attributes(self.attributes())));
                     }
                 }
-                8 => {
+                10 => {
                     if self.nest_members_offset != 0 {
                         return Some(Ok(ClassEvent::NestMembers(self.nest_members())));
                     }
                 }
-                9 => {
+                11 => {
                     if self.permitted_subclasses_offset != 0 {
                         return Some(Ok(ClassEvent::PermittedSubclasses(
                             self.permitted_subclasses(),
                         )));
                     }
                 }
-                10 => {
+                12 => {
                     if self.inner_classes_offset != 0 {
                         return Some(Ok(ClassEvent::InnerClasses(self.inner_classes())));
                     }
                 }
-                11 => {
+                13 => {
                     if self.record_components_offset != 0 {
                         return Some(Ok(ClassEvent::Record(self.record_components())));
                     }
                 }
-                12 => {
+                14 => {
                     if self.fields_count != 0 {
                         return Some(Ok(ClassEvent::Fields(self.fields())));
                     }
                 }
-                13 => {
+                15 => {
                     if self.methods_count != 0 {
                         return Some(Ok(ClassEvent::Methods(self.methods())));
                     }
@@ -814,15 +859,15 @@ define_simple_iterator!(
         let attribute_count = reader.buffer.read_u16(*offset)?;
         *offset += 2;
 
+        let mut invisible_annotations_count = 0;
+        let mut invisible_annotations_offset = 0;
+        let mut invisible_type_annotations_count = 0;
+        let mut invisible_type_annotations_offset = 0;
         let mut signature = None;
         let mut visible_annotations_count = 0;
         let mut visible_annotations_offset = 0;
-        let mut invisible_annotations_count = 0;
-        let mut invisible_annotations_offset = 0;
         let mut visible_type_annotations_count = 0;
         let mut visible_type_annotations_offset = 0;
-        let mut invisible_type_annotations_count = 0;
-        let mut invisible_type_annotations_offset = 0;
         let mut custom_attributes_offsets = Vec::new();
 
         for _ in 0..attribute_count {
@@ -834,28 +879,28 @@ define_simple_iterator!(
             *offset += 4;
 
             match attribute_name {
+                b"RuntimeInvisibleAnnotations" => {
+                    invisible_annotations_count = reader.buffer.read_u16(*offset)?;
+                    invisible_annotations_offset = *offset + 2;
+                }
+                b"RuntimeInvisibleTypeAnnotations" => {
+                    invisible_type_annotations_count = reader.buffer.read_u16(*offset)?;
+                    invisible_type_annotations_offset = *offset + 2;
+                }
+                b"RuntimeVisibleAnnotations" => {
+                    visible_annotations_count = reader.buffer.read_u16(*offset)?;
+                    visible_annotations_offset = *offset + 2;
+                }
+                b"RuntimeVisibleTypeAnnotations" => {
+                    visible_type_annotations_count = reader.buffer.read_u16(*offset)?;
+                    visible_type_annotations_offset = *offset + 2;
+                }
                 b"Signature" => {
                     signature = Some(
                         reader
                             .constant_pool
                             .get_utf8(reader.buffer.read_u16(*offset)?)?,
                     )
-                }
-                b"RuntimeVisibleAnnotations" => {
-                    visible_annotations_count = reader.buffer.read_u16(*offset)?;
-                    visible_annotations_offset = *offset + 2;
-                }
-                b"RuntimeInvisibleAnnotations" => {
-                    invisible_annotations_count = reader.buffer.read_u16(*offset)?;
-                    invisible_annotations_offset = *offset + 2;
-                }
-                b"RuntimeVisibleTypeAnnotations" => {
-                    visible_type_annotations_count = reader.buffer.read_u16(*offset)?;
-                    visible_type_annotations_offset = *offset + 2;
-                }
-                b"RuntimeInvisibleTypeAnnotations" => {
-                    invisible_type_annotations_count = reader.buffer.read_u16(*offset)?;
-                    invisible_type_annotations_offset = *offset + 2;
                 }
                 _ => custom_attributes_offsets.push(*offset - 6),
             }
@@ -869,15 +914,16 @@ define_simple_iterator!(
             signature,
             events: RecordComponentReaderEvents {
                 reader,
-                visible_annotations_count,
-                visible_annotations_offset,
                 invisible_annotations_count,
                 invisible_annotations_offset,
-                visible_type_annotations_count,
-                visible_type_annotations_offset,
                 invisible_type_annotations_count,
                 invisible_type_annotations_offset,
+                visible_annotations_count,
+                visible_annotations_offset,
+                visible_type_annotations_count,
+                visible_type_annotations_offset,
                 custom_attributes_offsets,
+                state: 0,
             },
         })
     }
@@ -886,7 +932,114 @@ define_simple_iterator!(
 define_simple_iterator!(
     ClassFieldsIterator,
     ClassFieldEvent<'class, FieldReaderEvents<'reader, 'class>>,
-    |reader, offset| { todo!() }
+    |reader: &'reader ClassReader<'class>, offset: &mut usize| -> ClassFileResult<_> {
+        let mut access = FieldAccess::from_bits_retain(reader.buffer.read_u16(*offset)?);
+        *offset += 2;
+        let name = reader
+            .constant_pool
+            .get_utf8(reader.buffer.read_u16(*offset)?)?;
+        *offset += 2;
+        let desc = reader
+            .constant_pool
+            .get_utf8(reader.buffer.read_u16(*offset)?)?;
+        *offset += 2;
+
+        let attribute_count = reader.buffer.read_u16(*offset)?;
+        *offset += 2;
+
+        let mut constant_value = None;
+        let mut invisible_annotations_count = 0;
+        let mut invisible_annotations_offset = 0;
+        let mut invisible_type_annotations_count = 0;
+        let mut invisible_type_annotations_offset = 0;
+        let mut is_deprecated = false;
+        let mut signature = None;
+        let mut visible_annotations_count = 0;
+        let mut visible_annotations_offset = 0;
+        let mut visible_type_annotations_count = 0;
+        let mut visible_type_annotations_offset = 0;
+        let mut custom_attributes_offsets = Vec::new();
+
+        for _ in 0..attribute_count {
+            let attribute_name = reader
+                .constant_pool
+                .get_utf8_as_bytes(reader.buffer.read_u16(*offset)?)?;
+            *offset += 2;
+            let attribute_length = reader.buffer.read_u32(*offset)?;
+            *offset += 4;
+
+            match attribute_name {
+                b"ConstantValue" => {
+                    let cp_index = reader.buffer.read_u16(*offset)?;
+                    let constant = match reader.constant_pool.get(cp_index)? {
+                        ConstantPoolEntry::Integer(i) => FieldValue::Integer(i),
+                        ConstantPoolEntry::Float(f) => FieldValue::Float(f),
+                        ConstantPoolEntry::Long(l) => FieldValue::Long(l),
+                        ConstantPoolEntry::Double(d) => FieldValue::Double(d),
+                        ConstantPoolEntry::String(s) => FieldValue::String(s),
+                        _ => {
+                            return Err(
+                                ClassFileError::BadConstantPoolTypeExpectedFieldConstantValue(
+                                    reader.constant_pool.get_type(cp_index)?,
+                                ),
+                            )
+                        }
+                    };
+                    constant_value = Some(constant);
+                }
+                b"Deprecated" => is_deprecated = true,
+                b"RuntimeInvisibleAnnotations" => {
+                    invisible_annotations_count = reader.buffer.read_u16(*offset)?;
+                    invisible_annotations_offset = *offset + 2;
+                }
+                b"RuntimeInvisibleTypeAnnotations" => {
+                    invisible_type_annotations_count = reader.buffer.read_u16(*offset)?;
+                    invisible_type_annotations_offset = *offset + 2;
+                }
+                b"RuntimeVisibleAnnotations" => {
+                    visible_annotations_count = reader.buffer.read_u16(*offset)?;
+                    visible_annotations_offset = *offset + 2;
+                }
+                b"RuntimeVisibleTypeAnnotations" => {
+                    visible_type_annotations_count = reader.buffer.read_u16(*offset)?;
+                    visible_type_annotations_offset = *offset + 2;
+                }
+                b"Signature" => {
+                    signature = Some(
+                        reader
+                            .constant_pool
+                            .get_utf8(reader.buffer.read_u16(*offset)?)?,
+                    )
+                }
+                b"Synthetic" => access.insert(FieldAccess::Synthetic),
+                _ => custom_attributes_offsets.push(*offset - 6),
+            }
+
+            *offset += attribute_length as usize;
+        }
+
+        Ok(ClassFieldEvent {
+            access,
+            name,
+            desc,
+            signature,
+            value: constant_value,
+            events: FieldReaderEvents {
+                reader,
+                invisible_annotations_count,
+                invisible_annotations_offset,
+                invisible_type_annotations_count,
+                invisible_type_annotations_offset,
+                is_deprecated,
+                visible_annotations_count,
+                visible_annotations_offset,
+                visible_type_annotations_count,
+                visible_type_annotations_offset,
+                custom_attributes_offsets,
+                state: 0,
+            },
+        })
+    }
 );
 
 define_simple_iterator!(
@@ -897,13 +1050,84 @@ define_simple_iterator!(
 
 pub struct FieldReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
+    invisible_annotations_count: u16,
+    invisible_annotations_offset: usize,
+    invisible_type_annotations_count: u16,
+    invisible_type_annotations_offset: usize,
+    is_deprecated: bool,
+    visible_annotations_count: u16,
+    visible_annotations_offset: usize,
+    visible_type_annotations_count: u16,
+    visible_type_annotations_offset: usize,
+    custom_attributes_offsets: Vec<usize>,
+    state: u8,
+}
+
+impl<'reader, 'class> FieldReaderEvents<'reader, 'class> {
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+
+    pub fn annotations(&self) -> AnnotationReaderIterator<'reader, 'class> {
+        AnnotationReaderIterator::new(
+            self.reader,
+            self.visible_annotations_count,
+            self.visible_annotations_offset,
+            self.invisible_annotations_count,
+            self.invisible_annotations_offset,
+        )
+    }
+
+    pub fn type_annotations(&self) -> TypeAnnotationReaderIterator<'reader, 'class> {
+        TypeAnnotationReaderIterator::new(
+            self.reader,
+            self.visible_type_annotations_count,
+            self.visible_type_annotations_offset,
+            self.invisible_type_annotations_count,
+            self.invisible_type_annotations_offset,
+        )
+    }
+
+    pub fn attributes(&self) -> CustomAttributeReaderIterator<'reader, 'class> {
+        CustomAttributeReaderIterator::new(self.reader, self.custom_attributes_offsets.clone())
+    }
 }
 
 impl<'reader, 'class> Iterator for FieldReaderEvents<'reader, 'class> {
     type Item = ClassFileResult<FieldEvent<'class, FieldReaderEventProviders<'reader, 'class>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        loop {
+            let state = self.state;
+            self.state += 1;
+            match state {
+                0 => {
+                    if self.is_deprecated {
+                        return Some(Ok(FieldEvent::Deprecated));
+                    }
+                }
+                1 => {
+                    if self.visible_annotations_offset != 0
+                        && self.invisible_annotations_offset != 0
+                    {
+                        return Some(Ok(FieldEvent::Annotations(self.annotations())));
+                    }
+                }
+                2 => {
+                    if self.visible_type_annotations_offset != 0
+                        && self.invisible_type_annotations_offset != 0
+                    {
+                        return Some(Ok(FieldEvent::TypeAnnotations(self.type_annotations())));
+                    }
+                }
+                3 => {
+                    if !self.custom_attributes_offsets.is_empty() {
+                        return Some(Ok(FieldEvent::Attributes(self.attributes())));
+                    }
+                }
+                _ => return None,
+            }
+        }
     }
 }
 
@@ -1751,15 +1975,42 @@ where
 
 pub struct RecordComponentReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
-    visible_annotations_count: u16,
-    visible_annotations_offset: usize,
     invisible_annotations_count: u16,
     invisible_annotations_offset: usize,
-    visible_type_annotations_count: u16,
-    visible_type_annotations_offset: usize,
     invisible_type_annotations_count: u16,
     invisible_type_annotations_offset: usize,
+    visible_annotations_count: u16,
+    visible_annotations_offset: usize,
+    visible_type_annotations_count: u16,
+    visible_type_annotations_offset: usize,
     custom_attributes_offsets: Vec<usize>,
+    state: u8,
+}
+
+impl<'reader, 'class> RecordComponentReaderEvents<'reader, 'class> {
+    pub fn annotations(&self) -> AnnotationReaderIterator<'reader, 'class> {
+        AnnotationReaderIterator::new(
+            self.reader,
+            self.visible_annotations_count,
+            self.visible_annotations_offset,
+            self.invisible_annotations_count,
+            self.invisible_annotations_offset,
+        )
+    }
+
+    pub fn type_annotations(&self) -> TypeAnnotationReaderIterator<'reader, 'class> {
+        TypeAnnotationReaderIterator::new(
+            self.reader,
+            self.visible_type_annotations_count,
+            self.visible_type_annotations_offset,
+            self.invisible_type_annotations_count,
+            self.invisible_type_annotations_offset,
+        )
+    }
+
+    pub fn attributes(&self) -> CustomAttributeReaderIterator<'reader, 'class> {
+        CustomAttributeReaderIterator::new(self.reader, self.custom_attributes_offsets.clone())
+    }
 }
 
 impl<'reader, 'class> Iterator for RecordComponentReaderEvents<'reader, 'class> {
@@ -1768,7 +2019,34 @@ impl<'reader, 'class> Iterator for RecordComponentReaderEvents<'reader, 'class> 
     >;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        loop {
+            let state = self.state;
+            self.state += 1;
+            match state {
+                0 => {
+                    if self.visible_annotations_offset != 0
+                        || self.invisible_annotations_offset != 0
+                    {
+                        return Some(Ok(RecordComponentEvent::Annotations(self.annotations())));
+                    }
+                }
+                1 => {
+                    if self.visible_type_annotations_offset != 0
+                        || self.invisible_type_annotations_offset != 0
+                    {
+                        return Some(Ok(RecordComponentEvent::TypeAnnotations(
+                            self.type_annotations(),
+                        )));
+                    }
+                }
+                2 => {
+                    if !self.custom_attributes_offsets.is_empty() {
+                        return Some(Ok(RecordComponentEvent::Attributes(self.attributes())));
+                    }
+                }
+                _ => return None,
+            }
+        }
     }
 }
 
@@ -1803,13 +2081,34 @@ impl<'reader, 'class> CustomAttributeReaderIterator<'reader, 'class> {
             offsets,
         }
     }
+
+    fn read(&self, offset: usize) -> ClassFileResult<Box<dyn Attribute>> {
+        let name = self
+            .reader
+            .constant_pool
+            .get_utf8(self.reader.buffer.read_u16(offset)?)?;
+        let len = self.reader.buffer.read_u32(offset)?;
+        let buffer = self
+            .reader
+            .buffer
+            .slice(offset + 6..offset + 6 + len as usize);
+        match self.reader.attribute_readers.get(name.as_ref()) {
+            Some(reader) => reader.read(&name, self.reader, buffer),
+            None => Ok(Box::new(UnknownAttribute {
+                name: name.into_owned(),
+                data: buffer.data.to_vec(),
+            })),
+        }
+    }
 }
 
 impl Iterator for CustomAttributeReaderIterator<'_, '_> {
     type Item = ClassFileResult<Box<dyn Attribute>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let offset = *self.offsets.get(self.index)?;
+        self.index += 1;
+        Some(self.read(offset))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
