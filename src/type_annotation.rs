@@ -45,7 +45,7 @@ pub enum TypeReference {
     Throws { exception_index: u16 } = 0x17,
     LocalVariable = 0x40,
     ResourceVariable = 0x41,
-    ExceptionParameter { try_catch_block_index: u16 } = 0x42,
+    ExceptionParameter = 0x42,
     Instanceof = 0x43,
     New = 0x44,
     ConstructorReference = 0x45,

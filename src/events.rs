@@ -1,9 +1,9 @@
 use crate::tree::{AnnotationNode, AnnotationValue, TypeAnnotationNode};
 use crate::{
     Attribute, BootstrapMethodArgument, ClassAccess, ClassFileResult, FieldAccess, FieldValue,
-    FrameType, FrameValue, Handle, InnerClassAccess, Label, LabelCreator, LdcConstant,
-    MethodAccess, ModuleAccess, ModuleRelationAccess, ModuleRequireAccess, NewarrayType, Opcode,
-    ParameterAccess, TypePath, TypeReference,
+    Frame, FrameValue, Handle, InnerClassAccess, Label, LabelCreator, LdcConstant, MethodAccess,
+    ModuleAccess, ModuleRelationAccess, ModuleRequireAccess, NewArrayType, Opcode, ParameterAccess,
+    TypePath, TypeReference,
 };
 use java_string::JavaStr;
 use std::borrow::Cow;
@@ -191,17 +191,13 @@ where
     ParameterAnnotations(P::ParameterAnnotations),
     Attributes(P::Attributes),
     Code {
-        label_creator: P::LabelCreator,
+        label_creator: LabelCreator,
     },
-    Frame {
-        kind: FrameType,
-        locals: Vec<FrameValue<'class>>,
-        stack: Vec<FrameValue<'class>>,
-    },
+    Frame(Frame<'class>),
     Insn(Opcode),
-    BipushInsn(i8),
-    SipushInsn(i16),
-    NewarrayInsn(NewarrayType),
+    BIPushInsn(i8),
+    SIPushInsn(i16),
+    NewArrayInsn(NewArrayType),
     VarInsn {
         opcode: Opcode,
         var_index: u16,
@@ -221,6 +217,7 @@ where
         owner: Cow<'class, JavaStr>,
         name: Cow<'class, JavaStr>,
         desc: Cow<'class, JavaStr>,
+        is_interface: bool,
     },
     InvokeDynamicInsn {
         name: Cow<'class, JavaStr>,
@@ -234,7 +231,7 @@ where
     },
     Label(Label),
     LdcInsn(LdcConstant<'class>),
-    IincInsn {
+    IIncInsn {
         var_index: u16,
         increment: i16,
     },
@@ -252,46 +249,15 @@ where
         desc: Cow<'class, JavaStr>,
         dimensions: u8,
     },
-    InsnAnnotation {
-        type_ref: TypeReference,
-        type_path: TypePath<'class>,
-        desc: Cow<'class, JavaStr>,
-        visible: bool,
-        events: P::InsnAnnotationEvents,
-    },
-    TryCatchBlock {
-        start: Label,
-        end: Label,
-        handler: Label,
-        ty: Option<Cow<'class, JavaStr>>,
-    },
-    TryCatchAnnotation {
-        type_ref: TypeReference,
-        type_path: TypePath<'class>,
-        desc: Cow<'class, JavaStr>,
-        visible: bool,
-        events: P::TryCatchAnnotationEvents,
-    },
-    LocalVariable {
-        name: Cow<'class, JavaStr>,
-        desc: Cow<'class, JavaStr>,
-        signature: Option<Cow<'class, JavaStr>>,
-        start: Label,
-        end: Label,
-        index: u16,
-    },
-    LocalVariableAnnotation {
-        type_ref: TypeReference,
-        type_path: TypePath<'class>,
-        ranges: Vec<(Label, Label, u16)>,
-        desc: Cow<'class, JavaStr>,
-        visible: bool,
-        events: P::LocalVariableAnnotationEvents,
-    },
+    InsnAnnotations(P::InsnAnnotations),
     LineNumber {
         line: u16,
         start: Label,
     },
+    LocalVariables(P::LocalVariables),
+    LocalVariableAnnotations(P::LocalVariableAnnotations),
+    TryCatchBlocks(P::TryCatchBlocks),
+    TryCatchBlockAnnotations(P::TryCatchBlockAnnotations),
     CodeAttributes(P::CodeAttributes),
     Maxs(MethodMaxsEvent),
 }
@@ -315,6 +281,37 @@ pub struct MethodParameterAnnotationEvent<'class> {
     pub annotation: AnnotationNode<'class>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MethodLocalVariableEvent<'class> {
+    pub name: Cow<'class, JavaStr>,
+    pub desc: Cow<'class, JavaStr>,
+    pub signature: Option<Cow<'class, JavaStr>>,
+    pub start: Label,
+    pub end: Label,
+    pub index: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MethodLocalVariableAnnotationEvent<'class> {
+    pub ranges: Vec<(Label, Label, u16)>,
+    pub visible: bool,
+    pub annotation: TypeAnnotationNode<'class>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MethodTryCatchBlockEvent<'class> {
+    pub start: Label,
+    pub end: Label,
+    pub handler: Label,
+    pub ty: Option<Cow<'class, JavaStr>>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MethodTryCatchBlockAnnotationEvent<'class> {
+    pub try_catch_block_index: u16,
+    pub annotation: TypeAnnotationNode<'class>,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MethodMaxsEvent {
     pub max_stack: u16,
@@ -336,21 +333,23 @@ pub trait MethodEventProviders<'class> {
 
     type Attributes: IntoIterator<Item = ClassFileResult<Box<dyn Attribute>>>;
 
-    type InsnAnnotationEvents: IntoIterator<
+    type InsnAnnotations: IntoIterator<
         Item = ClassFileResult<AnnotationEvent<TypeAnnotationNode<'class>>>,
     >;
 
-    type TryCatchAnnotationEvents: IntoIterator<
-        Item = ClassFileResult<AnnotationEvent<TypeAnnotationNode<'class>>>,
+    type LocalVariables: IntoIterator<Item = ClassFileResult<MethodLocalVariableEvent<'class>>>;
+
+    type LocalVariableAnnotations: IntoIterator<
+        Item = ClassFileResult<MethodLocalVariableAnnotationEvent<'class>>,
     >;
 
-    type LocalVariableAnnotationEvents: IntoIterator<
-        Item = ClassFileResult<AnnotationEvent<TypeAnnotationNode<'class>>>,
+    type TryCatchBlocks: IntoIterator<Item = ClassFileResult<MethodTryCatchBlockEvent<'class>>>;
+
+    type TryCatchBlockAnnotations: IntoIterator<
+        Item = ClassFileResult<MethodTryCatchBlockAnnotationEvent<'class>>,
     >;
 
     type CodeAttributes: IntoIterator<Item = ClassFileResult<Box<dyn Attribute>>>;
-
-    type LabelCreator: LabelCreator;
 }
 
 pub struct AnnotationEvent<A> {

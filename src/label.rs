@@ -1,19 +1,16 @@
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Label(u32);
 
-pub trait LabelCreator {
-    fn create_label(&self) -> Label;
+#[derive(Debug, Clone, Default)]
+pub struct LabelCreator {
+    next_id: Arc<AtomicU32>,
 }
 
-#[derive(Debug, Default)]
-pub struct DefaultLabelCreator {
-    next_id: AtomicU32,
-}
-
-impl LabelCreator for DefaultLabelCreator {
-    fn create_label(&self) -> Label {
+impl LabelCreator {
+    pub fn create_label(&self) -> Label {
         Label(self.next_id.fetch_add(1, Ordering::Relaxed))
     }
 }
