@@ -7,7 +7,8 @@ pub fn include_class(input: TokenStream) -> TokenStream {
     let file_path = format!("{}{class_name}.class", env!("JAVA_OUT_DIR"));
     quote! {
         include_bytes!(#file_path)
-    }.into()
+    }
+    .into()
 }
 
 #[proc_macro]
@@ -15,5 +16,6 @@ pub fn java_version(_: TokenStream) -> TokenStream {
     let java_version = env!("JAVA_VERSION");
     quote! {
         #java_version
-    }.into()
+    }
+    .into()
 }

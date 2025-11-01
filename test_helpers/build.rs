@@ -10,14 +10,26 @@ fn main() {
         None => which::which("javac").expect("Could not find javac in JAVA_HOME or PATH"),
     };
 
-    let version = Command::new(&javac).arg("-version").output().expect("Could not execute javac").stdout;
-    let version = version.strip_prefix(b"javac ").expect("Invalid javac -version output");
+    let version = Command::new(&javac)
+        .arg("-version")
+        .output()
+        .expect("Could not execute javac")
+        .stdout;
+    let version = version
+        .strip_prefix(b"javac ")
+        .expect("Invalid javac -version output");
     if !version.starts_with(b"21.") {
         panic!("javac version 21 expected. Please set the JAVA_HOME env var to a copy of JDK 21");
     }
-    println!("cargo:rustc-env=JAVA_VERSION={}", String::from_utf8_lossy(version));
+    println!(
+        "cargo:rustc-env=JAVA_VERSION={}",
+        String::from_utf8_lossy(version)
+    );
 
-    let input_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).parent().unwrap().join("test_data");
+    let input_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .parent()
+        .unwrap()
+        .join("test_data");
     println!("cargo:rerun-if-changed={}", input_dir.display());
 
     let output_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("test_data/");
@@ -35,6 +47,9 @@ fn main() {
 
     let compile_output = cmd.output().expect("Could not execute javac");
     if !compile_output.status.success() {
-        panic!("Failed to compile with javac: {}", String::from_utf8_lossy(&compile_output.stderr));
+        panic!(
+            "Failed to compile with javac: {}",
+            String::from_utf8_lossy(&compile_output.stderr)
+        );
     }
 }
