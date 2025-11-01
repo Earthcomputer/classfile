@@ -1,11 +1,12 @@
 use crate::{ClassFileError, ClassFileResult};
+use derive_more::{Display, TryFrom};
 use java_string::JavaStr;
 use std::borrow::Cow;
-use strum::{Display, FromRepr};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromRepr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, TryFrom)]
 #[repr(u8)]
 #[non_exhaustive]
+#[try_from(repr)]
 pub enum HandleKind {
     GetField = 1,
     GetStatic = 2,
@@ -20,7 +21,7 @@ pub enum HandleKind {
 
 impl HandleKind {
     pub fn from_u8(tag: u8) -> ClassFileResult<HandleKind> {
-        Self::from_repr(tag).ok_or(ClassFileError::BadHandleKind(tag))
+        Self::try_from(tag).map_err(|_| ClassFileError::BadHandleKind(tag))
     }
 }
 

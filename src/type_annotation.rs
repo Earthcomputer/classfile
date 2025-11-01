@@ -1,9 +1,10 @@
+use derive_more::TryFrom;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
-use strum::FromRepr;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, FromRepr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, TryFrom)]
 #[repr(u8)]
+#[try_from(repr)]
 pub(crate) enum TypeReferenceTargetType {
     ClassTypeParameter = 0x00,
     MethodTypeParameter = 0x01,
@@ -70,6 +71,7 @@ impl<'class> TypePath<'class> {
 
 impl Debug for TypePath<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // TODO: this is wrong
         Debug::fmt(&String::from_utf8_lossy(&self.path), f)
     }
 }

@@ -5,9 +5,10 @@ edition = "2021"
 
 [dependencies]
 bitflags = "2.10.0"
+# TODO: move derive_more back off git when 2.1.0 is released
+derive_more = { git = "https://github.com/JelteF/derive_more", features = ["debug", "display", "is_variant", "try_from", "try_unwrap", "unwrap"] }
 java_string = "0.1.3"
-strum = { version = "0.27.2", features = ["derive"] }
 thiserror = "2.0.17"
 
 [dev-dependencies]
-classfile_macros = { path = "./classfile_macros" }
+test_helpers = { path = "./test_helpers" }

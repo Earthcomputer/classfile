@@ -1,7 +1,6 @@
 use crate::Label;
 use java_string::JavaStr;
 use std::borrow::Cow;
-use strum::{Display, FromRepr};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Frame<'class> {

@@ -1,4 +1,5 @@
 #![allow(unused)] // temporary as I'm working on the library
+#![warn(missing_debug_implementations)]
 
 mod access;
 mod attribute;

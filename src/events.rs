@@ -5,9 +5,11 @@ use crate::{
     ModuleAccess, ModuleRelationAccess, ModuleRequireAccess, NewArrayType, Opcode, ParameterAccess,
     TypePath, TypeReference,
 };
+use derive_more::{Debug, IsVariant, TryUnwrap, Unwrap};
 use java_string::JavaStr;
 use std::borrow::Cow;
 
+#[derive(Debug, IsVariant, TryUnwrap, Unwrap)]
 #[non_exhaustive]
 pub enum ClassEvent<'class, P>
 where
@@ -48,6 +50,7 @@ pub struct ClassSourceEvent<'class> {
     pub debug: Option<Cow<'class, JavaStr>>,
 }
 
+#[derive(Debug)]
 pub struct ClassModuleEvent<'class, E> {
     pub name: Cow<'class, JavaStr>,
     pub access: ModuleAccess,
@@ -70,6 +73,7 @@ pub struct ClassInnerClassEvent<'class> {
     pub access: InnerClassAccess,
 }
 
+#[derive(Debug)]
 pub struct ClassRecordComponentEvent<'class, E> {
     pub name: Cow<'class, JavaStr>,
     pub desc: Cow<'class, JavaStr>,
@@ -77,6 +81,7 @@ pub struct ClassRecordComponentEvent<'class, E> {
     pub events: E,
 }
 
+#[derive(Debug)]
 pub struct ClassFieldEvent<'class, E> {
     pub access: FieldAccess,
     pub name: Cow<'class, JavaStr>,
@@ -86,6 +91,7 @@ pub struct ClassFieldEvent<'class, E> {
     pub events: E,
 }
 
+#[derive(Debug)]
 pub struct ClassMethodEvent<'class, E> {
     pub access: MethodAccess,
     pub name: Cow<'class, JavaStr>,
@@ -156,6 +162,7 @@ pub trait ClassEventProviders<'class> {
     type Methods: IntoIterator<Item = ClassFileResult<ClassMethodEvent<'class, Self::MethodEvents>>>;
 }
 
+#[derive(Debug, IsVariant, TryUnwrap, Unwrap)]
 #[non_exhaustive]
 pub enum FieldEvent<'class, P>
 where
@@ -177,6 +184,7 @@ pub trait FieldEventProviders<'class> {
     type Attributes: IntoIterator<Item = ClassFileResult<Box<dyn Attribute>>>;
 }
 
+#[derive(Debug, IsVariant, TryUnwrap, Unwrap)]
 #[non_exhaustive]
 pub enum MethodEvent<'class, P>
 where
@@ -190,6 +198,8 @@ where
     AnnotableParameterCount(MethodAnnotableParameterCountEvent),
     ParameterAnnotations(P::ParameterAnnotations),
     Attributes(P::Attributes),
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     Code {
         label_creator: LabelCreator,
     },
@@ -198,20 +208,28 @@ where
     BIPushInsn(i8),
     SIPushInsn(i16),
     NewArrayInsn(NewArrayType),
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     VarInsn {
         opcode: Opcode,
         var_index: u16,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     TypeInsn {
         opcode: Opcode,
         ty: Cow<'class, JavaStr>,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     FieldInsn {
         opcode: Opcode,
         owner: Cow<'class, JavaStr>,
         name: Cow<'class, JavaStr>,
         desc: Cow<'class, JavaStr>,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     MethodInsn {
         opcode: Opcode,
         owner: Cow<'class, JavaStr>,
@@ -219,37 +237,51 @@ where
         desc: Cow<'class, JavaStr>,
         is_interface: bool,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     InvokeDynamicInsn {
         name: Cow<'class, JavaStr>,
         desc: Cow<'class, JavaStr>,
         bootstrap_method_handle: Handle<'class>,
         bootstrap_method_arguments: Vec<BootstrapMethodArgument<'class>>,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     JumpInsn {
         opcode: Opcode,
         label: Label,
     },
     Label(Label),
     LdcInsn(LdcConstant<'class>),
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     IIncInsn {
         var_index: u16,
         increment: i16,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     TableSwitchInsn {
         low: i32,
         high: i32,
         dflt: Label,
         labels: Vec<Label>,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     LookupSwitchInsn {
         dflt: Label,
         values: Vec<(i32, Label)>,
     },
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     MultiANewArrayInsn {
         desc: Cow<'class, JavaStr>,
         dimensions: u8,
     },
     InsnAnnotations(P::InsnAnnotations),
+    #[try_unwrap(ignore)]
+    #[unwrap(ignore)]
     LineNumber {
         line: u16,
         start: Label,
@@ -352,11 +384,14 @@ pub trait MethodEventProviders<'class> {
     type CodeAttributes: IntoIterator<Item = ClassFileResult<Box<dyn Attribute>>>;
 }
 
+#[derive(Debug)]
 pub struct AnnotationEvent<A> {
     pub visible: bool,
     pub annotation: A,
 }
 
+#[derive(Debug, IsVariant, TryUnwrap, Unwrap)]
+#[non_exhaustive]
 pub enum ModuleEvent<'class, P>
 where
     P: ModuleEventProviders<'class>,
@@ -399,6 +434,7 @@ pub trait ModuleEventProviders<'class> {
     type Provides: IntoIterator<Item = ClassFileResult<ModuleProvidesEvent<'class>>>;
 }
 
+#[derive(Debug, IsVariant, TryUnwrap, Unwrap)]
 #[non_exhaustive]
 pub enum RecordComponentEvent<'class, P>
 where

@@ -1,11 +1,12 @@
 use crate::{ClassBuffer, ClassFileError, ClassFileResult, Handle, HandleKind};
+use derive_more::{Debug, Display, TryFrom};
 use java_string::JavaStr;
 use std::borrow::Cow;
-use strum::{Display, FromRepr};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromRepr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, TryFrom)]
 #[repr(u8)]
 #[non_exhaustive]
+#[try_from(repr)]
 pub enum ConstantPoolTag {
     Utf8 = 1,
     Integer = 3,
@@ -28,7 +29,7 @@ pub enum ConstantPoolTag {
 
 impl ConstantPoolTag {
     pub fn from_u8(tag: u8) -> ClassFileResult<ConstantPoolTag> {
-        Self::from_repr(tag).ok_or(ClassFileError::BadConstantPoolTag(tag))
+        Self::try_from(tag).map_err(|_| ClassFileError::BadConstantPoolTag(tag))
     }
 }
 
@@ -78,6 +79,12 @@ pub struct DynamicEntry<'class> {
 pub struct ConstantPool<'class> {
     buffer: ClassBuffer<'class>,
     offset: Box<[usize]>,
+}
+
+impl std::fmt::Debug for ConstantPool<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ConstantPool {{ {} entries }}", self.offset.len() - 1)
+    }
 }
 
 impl<'class> ConstantPool<'class> {
@@ -300,7 +307,7 @@ impl<'a, 'class> IntoIterator for &'a ConstantPool<'class> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ConstantPoolIntoIter<'a, 'class> {
     constant_pool: &'a ConstantPool<'class>,
     index: u16,

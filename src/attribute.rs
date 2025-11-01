@@ -1,8 +1,9 @@
 use crate::{ClassBuffer, ClassFileResult, ClassReader};
+use derive_more::Debug;
 use java_string::{JavaStr, JavaString};
 use std::any::Any;
 
-pub trait Attribute: Any {
+pub trait Attribute: Any + std::fmt::Debug {
     fn name(&self) -> &JavaStr;
 
     fn copy(&self) -> Box<dyn Attribute>;
@@ -34,6 +35,7 @@ impl Clone for Box<dyn AttributeReader> {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnknownAttribute {
     pub name: JavaString,
+    #[debug("{} bytes", data.len())]
     pub data: Vec<u8>,
 }
 

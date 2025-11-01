@@ -1,5 +1,4 @@
 /target
-classfile_macros/target
+test_helpers/target
 Cargo.lock
-classfile_macros/Cargo.lock
 .idea

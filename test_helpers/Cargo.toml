@@ -1,0 +1,15 @@
+[package]
+name = "test_helpers"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0.41"
+syn = "2.0.108"
+
+[build-dependencies]
+walkdir = "2.5.0"
+which = "8.0.0"

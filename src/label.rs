@@ -1,7 +1,9 @@
+use derive_more::Display;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+#[display("L{_0}")]
 pub struct Label(u32);
 
 #[derive(Debug, Clone, Default)]

@@ -17,6 +17,7 @@ use crate::{
     TypeReferenceTargetType, UnknownAttribute, LATEST_MAJOR_VERSION, MAX_ANNOTATION_NESTING,
 };
 use bitflags::{bitflags, Flags};
+use derive_more::Debug;
 use java_string::{JavaStr, JavaString};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -28,6 +29,7 @@ use std::sync::{Arc, OnceLock};
 
 macro_rules! define_simple_iterator {
     ($name:ident, $item_type:ty, $read_func:expr) => {
+        #[derive(Debug)]
         pub struct $name<'reader, 'class> {
             reader: &'reader ClassReader<'class>,
             count: u16,
@@ -80,12 +82,13 @@ bitflags! {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ClassReader<'class> {
     buffer: ClassBuffer<'class>,
     pub constant_pool: ConstantPool<'class>,
     metadata_start: usize,
     reader_flags: ClassReaderFlags,
+    #[debug("{:?}", attribute_readers.keys())]
     attribute_readers: HashMap<JavaString, Box<dyn AttributeReader>>,
 }
 
@@ -164,7 +167,7 @@ impl<'class> ClassReader<'class> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct InterfacesIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     interface_count: usize,
@@ -275,6 +278,12 @@ impl<'class> ClassBuffer<'class> {
                 len: self.data.len(),
             })?,
         })
+    }
+}
+
+impl std::fmt::Debug for ClassBuffer<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ClassBuffer {{ {} bytes }}", self.data.len())
     }
 }
 
@@ -453,6 +462,7 @@ impl<'reader, 'class> ClassEventSource<'class> for &'reader ClassReader<'class> 
     }
 }
 
+#[derive(Debug)]
 pub struct ClassReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     access: ClassAccess,
@@ -798,6 +808,7 @@ impl<'reader, 'class> Iterator for ClassReaderEvents<'reader, 'class> {
     }
 }
 
+#[derive(Debug)]
 pub struct ClassReaderEventProviders<'reader, 'class>(
     PhantomData<&'reader ()>,
     PhantomData<&'class ()>,
@@ -1020,7 +1031,13 @@ impl<'reader, 'class> BootstrapMethods<'reader, 'class> {
     }
 }
 
-#[derive(Clone)]
+impl std::fmt::Debug for BootstrapMethods<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.get_all(), f)
+    }
+}
+
+#[derive(Debug, Clone)]
 struct BootstrapMethod<'class> {
     handle: Handle<'class>,
     args: Vec<BootstrapMethodArgument<'class>>,
@@ -1251,6 +1268,7 @@ define_simple_iterator!(
     }
 );
 
+#[derive(Debug)]
 pub struct ClassMethodsIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     count: u16,
@@ -1437,6 +1455,7 @@ impl FusedIterator for ClassMethodsIterator<'_, '_> {}
 
 impl ExactSizeIterator for ClassMethodsIterator<'_, '_> {}
 
+#[derive(Debug)]
 pub struct FieldReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     invisible_annotations_count: u16,
@@ -1520,6 +1539,7 @@ impl<'reader, 'class> Iterator for FieldReaderEvents<'reader, 'class> {
     }
 }
 
+#[derive(Debug)]
 pub struct FieldReaderEventProviders<'reader, 'class>(
     PhantomData<&'reader ()>,
     PhantomData<&'class ()>,
@@ -1536,6 +1556,7 @@ where
     type Attributes = CustomAttributeReaderIterator<'reader, 'class>;
 }
 
+#[derive(Debug)]
 pub struct MethodReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     annotation_default_offset: usize,
@@ -1890,6 +1911,7 @@ impl<'reader, 'class> Iterator for MethodReaderEvents<'reader, 'class> {
     }
 }
 
+#[derive(Debug)]
 struct CodeData<'reader, 'class> {
     max_stack: u16,
     max_locals: u16,
@@ -2212,8 +2234,8 @@ impl<'reader, 'class> CodeData<'reader, 'class> {
                 }
                 InternalOpcodes::WIDE => {
                     let next_opcode = code.get_code(i + 1)?;
-                    let next_opcode = Opcode::from_repr(next_opcode)
-                        .ok_or(ClassFileError::BadOpcode(next_opcode))?;
+                    let next_opcode = Opcode::try_from(next_opcode)
+                        .map_err(|_| ClassFileError::BadOpcode(next_opcode))?;
                     match next_opcode {
                         Opcode::ILoad
                         | Opcode::FLoad
@@ -2282,7 +2304,7 @@ impl<'reader, 'class> CodeData<'reader, 'class> {
                 }
                 _ => {
                     let opcode =
-                        Opcode::from_repr(opcode).ok_or(ClassFileError::BadOpcode(opcode))?;
+                        Opcode::try_from(opcode).map_err(|_| ClassFileError::BadOpcode(opcode))?;
                     match opcode {
                         Opcode::Nop
                         | Opcode::AConstNull
@@ -2629,8 +2651,8 @@ impl<'reader, 'class> CodeData<'reader, 'class> {
                         }
                         Opcode::NewArray => {
                             let atype = code.get_code(i + 1)?;
-                            let atype = NewArrayType::from_repr(atype)
-                                .ok_or(ClassFileError::BadNewArrayType(atype))?;
+                            let atype = NewArrayType::try_from(atype)
+                                .map_err(|_| ClassFileError::BadNewArrayType(atype))?;
                             i += 2;
                             MethodEvent::NewArrayInsn(atype)
                         }
@@ -2891,7 +2913,7 @@ impl<'reader, 'class> CodeData<'reader, 'class> {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct InstructionMetadata<'reader, 'class>
 where
     'class: 'reader,
@@ -2957,6 +2979,7 @@ impl<T> CodeSliceExtensionsMut<T> for &mut [T] {
     }
 }
 
+#[derive(Debug)]
 pub struct MethodReaderEventProviders<'reader, 'class>(
     PhantomData<&'reader ()>,
     PhantomData<&'class ()>,
@@ -3011,6 +3034,7 @@ define_simple_iterator!(
     }
 );
 
+#[derive(Debug)]
 pub struct MethodParameterAnnotationsReaderIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     visible_offset: usize,
@@ -3207,6 +3231,7 @@ impl<'reader, 'class> Iterator for MethodParameterAnnotationsReaderIterator<'rea
 
 impl FusedIterator for MethodParameterAnnotationsReaderIterator<'_, '_> {}
 
+#[derive(Debug)]
 pub struct WrapWithResultReaderIterator<I> {
     inner: I,
 }
@@ -3306,8 +3331,8 @@ fn read_type_annotation<'class>(
 ) -> ClassFileResult<(TypeAnnotationNode<'class>, TypeAnnotationCodeLocation)> {
     let target_type = reader.buffer.read_u8(*offset)?;
     *offset += 1;
-    let target_type = TypeReferenceTargetType::from_repr(target_type)
-        .ok_or(ClassFileError::BadTypeAnnotationTarget(target_type))?;
+    let target_type = TypeReferenceTargetType::try_from(target_type)
+        .map_err(|_| ClassFileError::BadTypeAnnotationTarget(target_type))?;
     let mut code_location = TypeAnnotationCodeLocation::None;
 
     let type_ref = match target_type {
@@ -3617,6 +3642,7 @@ fn read_annotation_value<'class>(
     Ok(value)
 }
 
+#[derive(Debug)]
 pub struct AnnotationReaderIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     count: usize,
@@ -3680,6 +3706,7 @@ impl FusedIterator for AnnotationReaderIterator<'_, '_> {}
 
 impl ExactSizeIterator for AnnotationReaderIterator<'_, '_> {}
 
+#[derive(Debug)]
 pub struct TypeAnnotationReaderIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     count: usize,
@@ -3744,6 +3771,7 @@ impl FusedIterator for TypeAnnotationReaderIterator<'_, '_> {}
 
 impl ExactSizeIterator for TypeAnnotationReaderIterator<'_, '_> {}
 
+#[derive(Debug)]
 pub struct ModuleReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     offset: usize,
@@ -3887,7 +3915,7 @@ impl<'reader, 'class> Iterator for ModuleReaderEvents<'reader, 'class> {
                             ModuleProvidesReaderIterator::new(
                                 self.reader,
                                 provides_count,
-                                self.offset,
+                                self.offset + 2,
                             ),
                         )));
                     }
@@ -3972,6 +4000,7 @@ define_simple_iterator!(
     }
 );
 
+#[derive(Debug)]
 pub struct ModuleReaderEventProviders<'reader, 'class>(
     PhantomData<&'reader ()>,
     PhantomData<&'class ()>,
@@ -3989,6 +4018,7 @@ where
     type Provides = ModuleProvidesReaderIterator<'reader, 'class>;
 }
 
+#[derive(Debug)]
 pub struct RecordComponentReaderEvents<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     invisible_annotations_count: u16,
@@ -4066,6 +4096,7 @@ impl<'reader, 'class> Iterator for RecordComponentReaderEvents<'reader, 'class> 
     }
 }
 
+#[derive(Debug)]
 pub struct RecordComponentReaderEventProviders<'reader, 'class>(
     PhantomData<&'reader ()>,
     PhantomData<&'class ()>,
@@ -4083,6 +4114,7 @@ where
     type Attributes = CustomAttributeReaderIterator<'reader, 'class>;
 }
 
+#[derive(Debug)]
 pub struct CustomAttributeReaderIterator<'reader, 'class> {
     reader: &'reader ClassReader<'class>,
     index: usize,
@@ -4174,23 +4206,194 @@ define_simple_iterator!(
 
 #[cfg(test)]
 mod test {
-    use crate::{ClassAccess, ClassReader, ClassReaderFlags};
-    use classfile_macros::include_class;
+    use crate::{
+        ClassAccess, ClassEventSource, ClassFileResult, ClassReader, ClassReaderFlags,
+        ModuleProvidesEvent, ModuleRelationAccess, ModuleRelationEvent, ModuleRequireAccess,
+        ModuleRequireEvent,
+    };
+    use java_string::JavaStr;
     use std::borrow::Cow;
-
-    const HELLO_WORLD_BYTECODE: &[u8] = include_class!("test/HelloWorld.java")[0];
+    use test_helpers::{include_class, java_version};
 
     #[test]
     fn test_hello_world() {
-        let reader = ClassReader::new(HELLO_WORLD_BYTECODE, ClassReaderFlags::None).unwrap();
+        const BYTECODE: &[u8] = include_class!("HelloWorld");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
         assert_eq!(
             ClassAccess::Public | ClassAccess::Super,
             reader.access().unwrap()
         );
-        assert_eq!(Cow::Borrowed("HelloWorld"), reader.name().unwrap());
+        assert_eq!(JavaStr::from_str("HelloWorld"), reader.name().unwrap());
         assert_eq!(
-            Cow::Borrowed("java/lang/Object"),
+            JavaStr::from_str("java/lang/Object"),
             reader.super_name().unwrap().unwrap()
         );
+    }
+
+    #[test]
+    fn test_interfaces() {
+        const BYTECODE: &[u8] = include_class!("TestInterfaces");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![
+                JavaStr::from_str("java/lang/Runnable"),
+                JavaStr::from_str("java/io/Serializable")
+            ],
+            reader
+                .interfaces()
+                .unwrap()
+                .collect::<ClassFileResult<Vec<_>>>()
+                .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_signature() {
+        const BYTECODE: &[u8] = include_class!("TestSignature");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            JavaStr::from_str("<T:Ljava/lang/Object;>Ljava/lang/Object;"),
+            reader.events().unwrap().signature().unwrap().unwrap()
+        )
+    }
+
+    #[test]
+    fn test_deprecated() {
+        const BYTECODE: &[u8] = include_class!("TestDeprecated");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert!(reader.events().unwrap().is_deprecated())
+    }
+
+    #[test]
+    fn test_synthetic() {
+        const BYTECODE: &[u8] = include_class!("TestSyntheticClass$1");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            JavaStr::from_str("TestSyntheticClass$1"),
+            reader.name().unwrap()
+        );
+        assert!(reader.events().unwrap().is_synthetic());
+    }
+
+    #[test]
+    fn test_synthetic_old() {
+        const BYTECODE: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/test_data/TestSyntheticClass$1_Old.class"
+        ));
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert!(reader.events().unwrap().is_synthetic());
+    }
+
+    #[test]
+    fn test_source_file() {
+        const BYTECODE: &[u8] = include_class!("HelloWorld");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            JavaStr::from_str("HelloWorld.java"),
+            reader
+                .events()
+                .unwrap()
+                .source()
+                .unwrap()
+                .unwrap()
+                .source
+                .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_module() {
+        const BYTECODE: &[u8] = include_class!("module-info");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(ClassAccess::Module, reader.access().unwrap());
+        let module = reader.events().unwrap().module().unwrap().unwrap();
+        assert_eq!(JavaStr::from_str("test"), module.name);
+        assert_eq!(JavaStr::from_str("1.2.3"), module.version.unwrap());
+        let mut events = module.events;
+
+        let mut requires = events.next().unwrap().unwrap().unwrap_requires();
+        assert_eq!(
+            Some(Ok(ModuleRequireEvent {
+                module: JavaStr::from_str("java.base").into(),
+                version: Some(JavaStr::from_str(java_version!()).into()),
+                access: ModuleRequireAccess::empty()
+            })),
+            requires.next()
+        );
+        assert_eq!(
+            Some(Ok(ModuleRequireEvent {
+                module: JavaStr::from_str("java.logging").into(),
+                version: Some(JavaStr::from_str(java_version!()).into()),
+                access: ModuleRequireAccess::StaticPhase
+            })),
+            requires.next()
+        );
+        assert_eq!(
+            Some(Ok(ModuleRequireEvent {
+                module: JavaStr::from_str("java.net.http").into(),
+                version: Some(JavaStr::from_str(java_version!()).into()),
+                access: ModuleRequireAccess::Transitive
+            })),
+            requires.next()
+        );
+        assert!(requires.next().is_none());
+
+        let mut exports = events.next().unwrap().unwrap().unwrap_exports();
+        assert_eq!(
+            Some(Ok(ModuleRelationEvent {
+                package: JavaStr::from_str("pkg").into(),
+                modules: Vec::new(),
+                access: ModuleRelationAccess::empty()
+            })),
+            exports.next()
+        );
+        assert_eq!(
+            Some(Ok(ModuleRelationEvent {
+                package: JavaStr::from_str("pkg2").into(),
+                modules: vec![JavaStr::from_str("java.base").into()],
+                access: ModuleRelationAccess::empty()
+            })),
+            exports.next()
+        );
+        assert!(exports.next().is_none());
+
+        let mut opens = events.next().unwrap().unwrap().unwrap_opens();
+        assert_eq!(
+            Some(Ok(ModuleRelationEvent {
+                package: JavaStr::from_str("pkg2").into(),
+                modules: Vec::new(),
+                access: ModuleRelationAccess::empty()
+            })),
+            opens.next()
+        );
+        assert_eq!(
+            Some(Ok(ModuleRelationEvent {
+                package: JavaStr::from_str("pkg").into(),
+                modules: vec![JavaStr::from_str("java.base").into()],
+                access: ModuleRelationAccess::empty()
+            })),
+            opens.next()
+        );
+        assert!(opens.next().is_none());
+
+        let mut uses = events.next().unwrap().unwrap().unwrap_uses();
+        assert_eq!(
+            Some(Ok(JavaStr::from_str("java/lang/Runnable").into())),
+            uses.next()
+        );
+        assert!(uses.next().is_none());
+
+        let mut provides = events.next().unwrap().unwrap().unwrap_provides();
+        assert_eq!(
+            Some(Ok(ModuleProvidesEvent {
+                service: JavaStr::from_str("java/lang/Runnable").into(),
+                providers: vec![JavaStr::from_str("pkg/ClassInPackage").into()],
+            })),
+            provides.next()
+        );
+        assert!(provides.next().is_none());
+
+        assert!(events.next().is_none());
     }
 }

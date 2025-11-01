@@ -1,43 +1,44 @@
 use crate::{ConstantDynamic, Handle};
+use derive_more::{Display, TryFrom};
 use java_string::JavaStr;
 use std::borrow::Cow;
-use strum::{Display, FromRepr};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromRepr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, TryFrom)]
 #[repr(u8)]
 #[non_exhaustive]
-#[strum(serialize_all = "lowercase")]
+#[try_from(repr)]
+#[display(rename_all = "lowercase")]
 pub enum Opcode {
     Nop = 0,
-    #[strum(serialize = "aconst_null")]
+    #[display("aconst_null")]
     AConstNull = 1,
-    #[strum(serialize = "iconst_m1")]
+    #[display("iconst_m1")]
     IConstM1 = 2,
-    #[strum(serialize = "iconst_0")]
+    #[display("iconst_0")]
     IConst0 = 3,
-    #[strum(serialize = "iconst_1")]
+    #[display("iconst_1")]
     IConst1 = 4,
-    #[strum(serialize = "iconst_2")]
+    #[display("iconst_2")]
     IConst2 = 5,
-    #[strum(serialize = "iconst_3")]
+    #[display("iconst_3")]
     IConst3 = 6,
-    #[strum(serialize = "iconst_4")]
+    #[display("iconst_4")]
     IConst4 = 7,
-    #[strum(serialize = "iconst_5")]
+    #[display("iconst_5")]
     IConst5 = 8,
-    #[strum(serialize = "lconst_0")]
+    #[display("lconst_0")]
     LConst0 = 9,
-    #[strum(serialize = "lconst_1")]
+    #[display("lconst_1")]
     LConst1 = 10,
-    #[strum(serialize = "fconst_0")]
+    #[display("fconst_0")]
     FConst0 = 11,
-    #[strum(serialize = "fconst_1")]
+    #[display("fconst_1")]
     FConst1 = 12,
-    #[strum(serialize = "fconst_2")]
+    #[display("fconst_2")]
     FConst2 = 13,
-    #[strum(serialize = "dconst_0")]
+    #[display("dconst_0")]
     DConst0 = 14,
-    #[strum(serialize = "dconst_1")]
+    #[display("dconst_1")]
     DConst1 = 15,
     BIPush = 16,
     SIPush = 17,
@@ -71,14 +72,14 @@ pub enum Opcode {
     Pop = 87,
     Pop2 = 88,
     Dup = 89,
-    #[strum(serialize = "dup_x1")]
+    #[display("dup_x1")]
     DupX1 = 90,
-    #[strum(serialize = "dup_x2")]
+    #[display("dup_x2")]
     DupX2 = 91,
     Dup2 = 92,
-    #[strum(serialize = "dup2_x1")]
+    #[display("dup2_x1")]
     Dup2X1 = 93,
-    #[strum(serialize = "dup2_x2")]
+    #[display("dup2_x2")]
     Dup2X2 = 94,
     Swap = 95,
     IAdd = 96,
@@ -144,21 +145,21 @@ pub enum Opcode {
     IfGe = 156,
     IfGt = 157,
     IfLe = 158,
-    #[strum(serialize = "if_icmpeq")]
+    #[display("if_icmpeq")]
     IfICmpEq = 159,
-    #[strum(serialize = "if_icmpne")]
+    #[display("if_icmpne")]
     IfICmpNe = 160,
-    #[strum(serialize = "if_icmplt")]
+    #[display("if_icmplt")]
     IfICmpLt = 161,
-    #[strum(serialize = "if_icmpge")]
+    #[display("if_icmpge")]
     IfICmpGe = 162,
-    #[strum(serialize = "if_icmpgt")]
+    #[display("if_icmpgt")]
     IfICmpGt = 163,
-    #[strum(serialize = "if_icmple")]
+    #[display("if_icmple")]
     IfICmpLe = 164,
-    #[strum(serialize = "if_acmpeq")]
+    #[display("if_acmpeq")]
     IfACmpEq = 165,
-    #[strum(serialize = "if_acmpne")]
+    #[display("if_acmpne")]
     IfACmpNe = 166,
     Goto = 167,
     Jsr = 168,
@@ -244,8 +245,10 @@ impl InternalOpcodes {
     pub(crate) const JSR_W: u8 = 201;
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromRepr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display, TryFrom)]
 #[repr(u8)]
+#[display(rename_all = "lowercase")]
+#[try_from(repr)]
 pub enum NewArrayType {
     Boolean = 4,
     Char = 5,

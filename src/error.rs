@@ -2,7 +2,7 @@ use crate::{ConstantPoolTag, Opcode};
 use java_string::Utf8Error;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[non_exhaustive]
 pub enum ClassFileError {
     #[error("bad annotation tag: {0}")]
