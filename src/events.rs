@@ -384,7 +384,7 @@ pub trait MethodEventProviders<'class> {
     type CodeAttributes: IntoIterator<Item = ClassFileResult<Box<dyn Attribute>>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct AnnotationEvent<A> {
     pub visible: bool,
     pub annotation: A,

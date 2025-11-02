@@ -4206,10 +4206,11 @@ define_simple_iterator!(
 
 #[cfg(test)]
 mod test {
+    use crate::tree::{AnnotationNode, AnnotationValue, TypeAnnotationNode};
     use crate::{
-        ClassAccess, ClassEventSource, ClassFileResult, ClassReader, ClassReaderFlags,
-        ModuleProvidesEvent, ModuleRelationAccess, ModuleRelationEvent, ModuleRequireAccess,
-        ModuleRequireEvent,
+        AnnotationEvent, ClassAccess, ClassEventSource, ClassFileResult, ClassOuterClassEvent,
+        ClassReader, ClassReaderFlags, ModuleProvidesEvent, ModuleRelationAccess,
+        ModuleRelationEvent, ModuleRequireAccess, ModuleRequireEvent, TypePath, TypeReference,
     };
     use java_string::JavaStr;
     use std::borrow::Cow;
@@ -4395,5 +4396,338 @@ mod test {
         assert!(provides.next().is_none());
 
         assert!(events.next().is_none());
+    }
+
+    #[test]
+    fn test_nest_host() {
+        const BYTECODE: &[u8] = include_class!("TestInnerClass$Inner");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            JavaStr::from_str("TestInnerClass"),
+            reader.events().unwrap().nest_host().unwrap().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_nest_members() {
+        const BYTECODE: &[u8] = include_class!("TestInnerClass");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![JavaStr::from_str("TestInnerClass$Inner")],
+            reader
+                .events()
+                .unwrap()
+                .nest_members()
+                .collect::<ClassFileResult<Vec<Cow<JavaStr>>>>()
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_outer_class() {
+        const BYTECODE: &[u8] = include_class!("TestLocalClass$1Local");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            ClassOuterClassEvent {
+                owner: JavaStr::from_str("TestLocalClass").into(),
+                method_name: Some(JavaStr::from_str("test").into()),
+                method_desc: Some(JavaStr::from_str("()V").into()),
+            },
+            reader.events().unwrap().outer_class().unwrap().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_annotations() {
+        const BYTECODE: &[u8] = include_class!("TestAnnotations");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![
+                AnnotationEvent {
+                    visible: true,
+                    annotation: AnnotationNode {
+                        desc: JavaStr::from_str("LVisibleAnnotation;").into(),
+                        values: vec![
+                            (
+                                JavaStr::from_str("booleanValue").into(),
+                                AnnotationValue::Boolean(true)
+                            ),
+                            (
+                                JavaStr::from_str("byteValue").into(),
+                                AnnotationValue::Byte(1)
+                            ),
+                            (
+                                JavaStr::from_str("charValue").into(),
+                                AnnotationValue::Char('a' as u16)
+                            ),
+                            (
+                                JavaStr::from_str("shortValue").into(),
+                                AnnotationValue::Short(2)
+                            ),
+                            (
+                                JavaStr::from_str("intValue").into(),
+                                AnnotationValue::Int(3)
+                            ),
+                            (
+                                JavaStr::from_str("longValue").into(),
+                                AnnotationValue::Long(4)
+                            ),
+                            (
+                                JavaStr::from_str("floatValue").into(),
+                                AnnotationValue::Float(5.0)
+                            ),
+                            (
+                                JavaStr::from_str("doubleValue").into(),
+                                AnnotationValue::Double(6.0)
+                            ),
+                            (
+                                JavaStr::from_str("stringValue").into(),
+                                AnnotationValue::String(JavaStr::from_str("Hello World").into())
+                            ),
+                            (
+                                JavaStr::from_str("classValue").into(),
+                                AnnotationValue::Class(
+                                    JavaStr::from_str("Ljava/lang/String;").into()
+                                )
+                            ),
+                            (
+                                JavaStr::from_str("enumValue").into(),
+                                AnnotationValue::Enum {
+                                    desc: JavaStr::from_str("Ljava/lang/annotation/ElementType;")
+                                        .into(),
+                                    name: JavaStr::from_str("FIELD").into()
+                                }
+                            ),
+                            (
+                                JavaStr::from_str("annotationValue").into(),
+                                AnnotationValue::Annotation(AnnotationNode {
+                                    desc: JavaStr::from_str("Ljava/lang/Deprecated;").into(),
+                                    values: vec![(
+                                        JavaStr::from_str("forRemoval").into(),
+                                        AnnotationValue::Boolean(true)
+                                    )],
+                                })
+                            )
+                        ]
+                    }
+                },
+                AnnotationEvent {
+                    visible: false,
+                    annotation: AnnotationNode {
+                        desc: JavaStr::from_str("LInvisibleAnnotation;").into(),
+                        values: vec![
+                            (
+                                JavaStr::from_str("booleans").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Boolean(false),
+                                    AnnotationValue::Boolean(true)
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("bytes").into(),
+                                AnnotationValue::Array(vec![AnnotationValue::Byte(0)])
+                            ),
+                            (
+                                JavaStr::from_str("chars").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Char('a' as u16),
+                                    AnnotationValue::Char('b' as u16)
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("shorts").into(),
+                                AnnotationValue::Array(vec![AnnotationValue::Short(1)])
+                            ),
+                            (
+                                JavaStr::from_str("ints").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Int(1),
+                                    AnnotationValue::Int(2)
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("longs").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Long(42),
+                                    AnnotationValue::Long(69)
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("floats").into(),
+                                AnnotationValue::Array(vec![AnnotationValue::Float(420.69)])
+                            ),
+                            (
+                                JavaStr::from_str("doubles").into(),
+                                AnnotationValue::Array(vec![AnnotationValue::Double(-100.0)])
+                            ),
+                            (
+                                JavaStr::from_str("strings").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::String(JavaStr::from_str("Hello").into()),
+                                    AnnotationValue::String(JavaStr::from_str("World").into())
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("classes").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Class(
+                                        JavaStr::from_str("Ljava/lang/Class;").into()
+                                    ),
+                                    AnnotationValue::Class(JavaStr::from_str("V").into()),
+                                    AnnotationValue::Class(
+                                        JavaStr::from_str("[Ljava/lang/String;").into()
+                                    )
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("enums").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Enum {
+                                        desc: JavaStr::from_str(
+                                            "Ljava/lang/annotation/ElementType;"
+                                        )
+                                        .into(),
+                                        name: JavaStr::from_str("FIELD").into()
+                                    },
+                                    AnnotationValue::Enum {
+                                        desc: JavaStr::from_str(
+                                            "Ljava/lang/annotation/ElementType;"
+                                        )
+                                        .into(),
+                                        name: JavaStr::from_str("METHOD").into()
+                                    }
+                                ])
+                            ),
+                            (
+                                JavaStr::from_str("annotations").into(),
+                                AnnotationValue::Array(vec![
+                                    AnnotationValue::Annotation(AnnotationNode {
+                                        desc: JavaStr::from_str("Ljava/lang/Deprecated;").into(),
+                                        values: Vec::new()
+                                    }),
+                                    AnnotationValue::Annotation(AnnotationNode {
+                                        desc: JavaStr::from_str("Ljava/lang/Deprecated;").into(),
+                                        values: Vec::new()
+                                    })
+                                ])
+                            )
+                        ],
+                    }
+                }
+            ],
+            reader
+                .events()
+                .unwrap()
+                .annotations()
+                .collect::<ClassFileResult<Vec<AnnotationEvent<AnnotationNode>>>>()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_type_annotations() {
+        const BYTECODE: &[u8] = include_class!("TestAnnotations");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![
+                AnnotationEvent {
+                    visible: true,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassExtends {
+                            interface_index: None
+                        },
+                        type_path: TypePath::default(),
+                        desc: JavaStr::from_str("LVisibleTypeAnnotation;").into(),
+                        values: Vec::new(),
+                    }
+                },
+                AnnotationEvent {
+                    visible: true,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameter { param_index: 0 },
+                        type_path: TypePath::default(),
+                        desc: JavaStr::from_str("LVisibleTypeAnnotation;").into(),
+                        values: Vec::new(),
+                    }
+                },
+                AnnotationEvent {
+                    visible: true,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameterBound {
+                            param_index: 1,
+                            bound_index: 1
+                        },
+                        type_path: "0;".parse().unwrap(),
+                        desc: JavaStr::from_str("LVisibleTypeAnnotation;").into(),
+                        values: Vec::new(),
+                    }
+                },
+                AnnotationEvent {
+                    visible: true,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameterBound {
+                            param_index: 3,
+                            bound_index: 1
+                        },
+                        type_path: "0;*".parse().unwrap(),
+                        desc: JavaStr::from_str("LVisibleTypeAnnotation;").into(),
+                        values: Vec::new()
+                    }
+                },
+                AnnotationEvent {
+                    visible: true,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameterBound {
+                            param_index: 4,
+                            bound_index: 1
+                        },
+                        type_path: "0;*".parse().unwrap(),
+                        desc: JavaStr::from_str("LVisibleTypeAnnotation;").into(),
+                        values: Vec::new()
+                    }
+                },
+                AnnotationEvent {
+                    visible: false,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassExtends {
+                            interface_index: Some(0)
+                        },
+                        type_path: TypePath::default(),
+                        desc: JavaStr::from_str("LInvisibleTypeAnnotation;").into(),
+                        values: Vec::new()
+                    }
+                },
+                AnnotationEvent {
+                    visible: false,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameterBound {
+                            param_index: 0,
+                            bound_index: 0
+                        },
+                        type_path: TypePath::default(),
+                        desc: JavaStr::from_str("LInvisibleTypeAnnotation;").into(),
+                        values: Vec::new(),
+                    }
+                },
+                AnnotationEvent {
+                    visible: false,
+                    annotation: TypeAnnotationNode {
+                        type_ref: TypeReference::ClassTypeParameterBound {
+                            param_index: 2,
+                            bound_index: 1
+                        },
+                        type_path: "0;".parse().unwrap(),
+                        desc: JavaStr::from_str("LInvisibleTypeAnnotation;").into(),
+                        values: Vec::new(),
+                    }
+                }
+            ],
+            reader
+                .events()
+                .unwrap()
+                .type_annotations()
+                .collect::<ClassFileResult<Vec<AnnotationEvent<TypeAnnotationNode>>>>()
+                .unwrap()
+        );
     }
 }

@@ -10,16 +10,24 @@ fn main() {
         None => which::which("javac").expect("Could not find javac in JAVA_HOME or PATH"),
     };
 
-    let version = Command::new(&javac)
+    let javac_version_output = Command::new(&javac)
         .arg("-version")
         .output()
-        .expect("Could not execute javac")
-        .stdout;
-    let version = version
+        .expect("Could not execute javac");
+    let version = javac_version_output
+        .stdout
         .strip_prefix(b"javac ")
-        .expect("Invalid javac -version output");
+        .or_else(|| javac_version_output.stderr.strip_prefix(b"javac "))
+        .expect(&format!(
+            "Invalid javac -version output: {}, {}",
+            String::from_utf8_lossy(&javac_version_output.stdout),
+            String::from_utf8_lossy(&javac_version_output.stderr)
+        ));
     if !version.starts_with(b"21.") {
-        panic!("javac version 21 expected. Please set the JAVA_HOME env var to a copy of JDK 21");
+        panic!(
+            "javac version 21 expected, found {}. Please set the JAVA_HOME env var to a copy of JDK 21",
+            String::from_utf8_lossy(version.trim_ascii())
+        );
     }
     println!(
         "cargo:rustc-env=JAVA_VERSION={}",
