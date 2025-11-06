@@ -1057,7 +1057,7 @@ define_simple_iterator!(
         *offset += 2;
         let inner_name = reader
             .constant_pool
-            .get_optional_class(reader.buffer.read_u16(*offset)?)?;
+            .get_optional_utf8(reader.buffer.read_u16(*offset)?)?;
         *offset += 2;
         let access = InnerClassAccess::from_bits_retain(reader.buffer.read_u16(*offset)?);
         *offset += 2;
@@ -4208,9 +4208,10 @@ define_simple_iterator!(
 mod test {
     use crate::tree::{AnnotationNode, AnnotationValue, TypeAnnotationNode};
     use crate::{
-        AnnotationEvent, ClassAccess, ClassEventSource, ClassFileResult, ClassOuterClassEvent,
-        ClassReader, ClassReaderFlags, ModuleProvidesEvent, ModuleRelationAccess,
-        ModuleRelationEvent, ModuleRequireAccess, ModuleRequireEvent, TypePath, TypeReference,
+        AnnotationEvent, ClassAccess, ClassEventSource, ClassFileResult, ClassInnerClassEvent,
+        ClassOuterClassEvent, ClassReader, ClassReaderFlags, InnerClassAccess, ModuleProvidesEvent,
+        ModuleRelationAccess, ModuleRelationEvent, ModuleRequireAccess, ModuleRequireEvent,
+        TypePath, TypeReference,
     };
     use java_string::JavaStr;
     use std::borrow::Cow;
@@ -4727,6 +4728,44 @@ mod test {
                 .unwrap()
                 .type_annotations()
                 .collect::<ClassFileResult<Vec<AnnotationEvent<TypeAnnotationNode>>>>()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_permitted_subclasses() {
+        const BYTECODE: &[u8] = include_class!("TestSealedClass");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![
+                JavaStr::from_str("TestSealedClass$Foo"),
+                JavaStr::from_str("TestSealedClass$Bar")
+            ],
+            reader
+                .events()
+                .unwrap()
+                .permitted_subclasses()
+                .collect::<ClassFileResult<Vec<_>>>()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_inner_classes() {
+        const BYTECODE: &[u8] = include_class!("TestInnerClass");
+        let reader = ClassReader::new(BYTECODE, ClassReaderFlags::None).unwrap();
+        assert_eq!(
+            vec![ClassInnerClassEvent {
+                name: JavaStr::from_str("TestInnerClass$Inner").into(),
+                inner_name: Some(JavaStr::from_str("Inner").into()),
+                outer_name: Some(JavaStr::from_str("TestInnerClass").into()),
+                access: InnerClassAccess::Private | InnerClassAccess::Static
+            }],
+            reader
+                .events()
+                .unwrap()
+                .inner_classes()
+                .collect::<ClassFileResult<Vec<_>>>()
                 .unwrap()
         );
     }
